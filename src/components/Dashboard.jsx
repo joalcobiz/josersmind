@@ -4,14 +4,15 @@ import {
   ChevronDown, ChevronUp, Calendar, Clock, Tag, Smile,
   Frown, Meh, Zap, Heart, Search, Trash2, CheckCircle,
   X, Sun, Moon, BarChart2, Flame, Award, ArrowRight,
-  Layers, Activity, BookOpen, ListTodo
+  Layers, Activity, BookOpen, ListTodo, MessageCircle,
+  ThumbsUp, ThumbsDown, HelpCircle, Star, Archive,
+  RefreshCw, Quote, Filter, Check
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
 // THEME CONTEXT
 // ═══════════════════════════════════════════════════════════════
 const ThemeContext = createContext();
-
 const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) throw new Error('useTheme must be used within ThemeProvider');
@@ -21,7 +22,7 @@ const useTheme = () => {
 const ThemeProvider = ({ children }) => {
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : false; // Light mode default
+    return saved ? saved === 'dark' : false;
   });
 
   useEffect(() => {
@@ -37,7 +38,7 @@ const ThemeProvider = ({ children }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// MAIN DASHBOARD COMPONENT
+// MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 const Dashboard = () => {
   return (
@@ -58,10 +59,15 @@ const DashboardContent = () => {
     const saved = localStorage.getItem('journal-entries');
     return saved ? JSON.parse(saved) : [];
   });
+  const [affirmations, setAffirmations] = useState(() => {
+    const saved = localStorage.getItem('affirmations');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterMood, setFilterMood] = useState('all');
+  const [affirmationFilter, setAffirmationFilter] = useState('today');
   const [expandedEntries, setExpandedEntries] = useState({});
 
   const [newEntry, setNewEntry] = useState({
@@ -71,8 +77,118 @@ const DashboardContent = () => {
     tags: ''
   });
 
+  // Persist to localStorage
   useEffect(() => {
     localStorage.setItem('journal-entries', JSON.stringify(entries));
+  }, [entries]);
+
+  useEffect(() => {
+    localStorage.setItem('affirmations', JSON.stringify(affirmations));
+  }, [affirmations]);
+
+  // ─────────────────────────────────────────────────────────────
+  // AFFIRMATION GENERATION (AI-based on history)
+  // ─────────────────────────────────────────────────────────────
+  const generateAffirmations = (journalEntries) => {
+    // This would connect to your AI backend
+    // For now, generates contextual affirmations based on entry themes
+    
+    const baseAffirmations = [
+      // Pattern recognition & intelligence
+      "Your ability to see patterns others miss is a gift. Trust it.",
+      "Complex problems don't intimidate you — they engage you.",
+      "Your mind works differently, and that's your superpower.",
+      
+      // Working memory & systems
+      "External systems aren't crutches — they're tools of the wise.",
+      "Writing things down multiplies your capacity, not diminishes it.",
+      "Your brain is for having ideas, not holding them.",
+      
+      // Momentum & execution
+      "Start messy. Momentum beats perfection.",
+      "One small action today compounds into transformation.",
+      "You don't need motivation. You need to begin.",
+      
+      // Rebellion & curiosity
+      "Following your curiosity isn't distraction — it's direction.",
+      "Obligation kills your spirit. Find the want behind the should.",
+      "You rebel against meaninglessness, not responsibility.",
+      
+      // Resilience & identity
+      "You've survived 100% of your worst days.",
+      "The gap between who you are and who you appear is closing.",
+      "Struggle doesn't diminish your worth. It reveals your depth.",
+      
+      // Self-compassion
+      "You're not broken. You're running different software.",
+      "Forgiving yesterday's version of you frees today's.",
+      "Progress isn't linear, and neither is healing.",
+      
+      // Challenge affirmations (important - not just comfort)
+      "Comfort is the enemy of the life you want.",
+      "The task you're avoiding holds what you need most.",
+      "Your potential means nothing without action.",
+      "Stop waiting to feel ready. Ready is a lie.",
+      "The story you tell yourself is optional. Choose a better one.",
+      "Avoidance today is debt with interest tomorrow.",
+      "You know what to do. The question is: will you?",
+    ];
+
+    // Analyze recent entries for themes (simplified)
+    const recentContent = journalEntries.slice(0, 10).map(e => e.content.toLowerCase()).join(' ');
+    
+    let relevantAffirmations = [...baseAffirmations];
+    
+    // Weight based on detected themes
+    if (recentContent.includes('stuck') || recentContent.includes('procrastin') || recentContent.includes('avoid')) {
+      relevantAffirmations.push(
+        "The first step is always the hardest. Take it anyway.",
+        "Action creates clarity. Waiting creates fog.",
+        "You're not lazy. You're overwhelmed. Start smaller."
+      );
+    }
+    
+    if (recentContent.includes('fail') || recentContent.includes('disappoint') || recentContent.includes('shame')) {
+      relevantAffirmations.push(
+        "Failure is data, not destiny.",
+        "Your worth isn't measured by your output.",
+        "Everyone you admire has a history of failures you don't see."
+      );
+    }
+    
+    if (recentContent.includes('anxious') || recentContent.includes('worry') || recentContent.includes('fear')) {
+      relevantAffirmations.push(
+        "Anxiety lies about the future. You can only act in now.",
+        "Feel the fear. Do the thing anyway.",
+        "Most of what you fear will never happen. Act on what's real."
+      );
+    }
+
+    // Shuffle and pick 5
+    const shuffled = relevantAffirmations.sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 5);
+  };
+
+  // Check and generate daily affirmations
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const todaysAffirmations = affirmations.filter(a => a.generatedDate === today && !a.isArchived);
+    
+    if (todaysAffirmations.length === 0 && entries.length > 0) {
+      const newAffirmationTexts = generateAffirmations(entries);
+      const newAffirmations = newAffirmationTexts.map((text, i) => ({
+        id: `${Date.now()}-${i}`,
+        text,
+        generatedDate: today,
+        status: 'active', // 'active' | 'affirmed'
+        reaction: null, // 'liked' | 'disliked' | 'unsure' | null
+        isFavorite: false,
+        isArchived: false,
+        affirmedAt: null,
+        createdAt: new Date().toISOString()
+      }));
+      setAffirmations(prev => [...newAffirmations, ...prev]);
+    }
   }, [entries]);
 
   // ─────────────────────────────────────────────────────────────
@@ -132,13 +248,24 @@ const DashboardContent = () => {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Layers },
+    { id: 'affirmations', label: 'Affirmations', icon: Quote },
     { id: 'journal', label: 'Journal', icon: BookOpen },
     { id: 'tasks', label: 'Tasks', icon: ListTodo },
     { id: 'profile', label: 'Profile', icon: Brain }
   ];
 
+  const affirmationFilters = [
+    { value: 'today', label: 'Today' },
+    { value: 'favorites', label: 'Favorites' },
+    { value: 'liked', label: 'Liked' },
+    { value: 'disliked', label: 'Disliked' },
+    { value: 'unsure', label: 'Unsure' },
+    { value: 'archived', label: 'Archived' },
+    { value: 'all', label: 'All History' }
+  ];
+
   // ─────────────────────────────────────────────────────────────
-  // HANDLERS
+  // ENTRY HANDLERS
   // ─────────────────────────────────────────────────────────────
   const handleAddEntry = () => {
     if (!newEntry.content.trim()) return;
@@ -170,8 +297,80 @@ const DashboardContent = () => {
   };
 
   // ─────────────────────────────────────────────────────────────
+  // AFFIRMATION HANDLERS
+  // ─────────────────────────────────────────────────────────────
+  const affirmAffirmation = (id) => {
+    setAffirmations(prev => prev.map(a => 
+      a.id === id ? { ...a, status: 'affirmed', affirmedAt: new Date().toISOString() } : a
+    ));
+  };
+
+  const setAffirmationReaction = (id, reaction) => {
+    setAffirmations(prev => prev.map(a => 
+      a.id === id ? { ...a, reaction: a.reaction === reaction ? null : reaction } : a
+    ));
+  };
+
+  const toggleAffirmationFavorite = (id) => {
+    setAffirmations(prev => prev.map(a => 
+      a.id === id ? { ...a, isFavorite: !a.isFavorite } : a
+    ));
+  };
+
+  const archiveAffirmation = (id) => {
+    setAffirmations(prev => prev.map(a => 
+      a.id === id ? { ...a, isArchived: true } : a
+    ));
+  };
+
+  const unarchiveAffirmation = (id) => {
+    setAffirmations(prev => prev.map(a => 
+      a.id === id ? { ...a, isArchived: false } : a
+    ));
+  };
+
+  const regenerateAffirmations = () => {
+    const today = new Date().toDateString();
+    // Remove today's non-favorited affirmations
+    setAffirmations(prev => prev.filter(a => a.generatedDate !== today || a.isFavorite));
+    // Generate new ones
+    const newAffirmationTexts = generateAffirmations(entries);
+    const newAffirmations = newAffirmationTexts.map((text, i) => ({
+      id: `${Date.now()}-${i}`,
+      text,
+      generatedDate: today,
+      status: 'active',
+      reaction: null,
+      isFavorite: false,
+      isArchived: false,
+      affirmedAt: null,
+      createdAt: new Date().toISOString()
+    }));
+    setAffirmations(prev => [...newAffirmations, ...prev]);
+  };
+
+  // ─────────────────────────────────────────────────────────────
   // COMPUTED VALUES
   // ─────────────────────────────────────────────────────────────
+  const today = new Date().toDateString();
+  
+  const todaysAffirmations = affirmations.filter(a => a.generatedDate === today && !a.isArchived);
+  const favoriteAffirmations = affirmations.filter(a => a.isFavorite && !a.isArchived);
+  const overviewAffirmations = [...todaysAffirmations, ...favoriteAffirmations.filter(f => !todaysAffirmations.find(t => t.id === f.id))];
+
+  const filteredAffirmations = affirmations.filter(a => {
+    switch (affirmationFilter) {
+      case 'today': return a.generatedDate === today && !a.isArchived;
+      case 'favorites': return a.isFavorite && !a.isArchived;
+      case 'liked': return a.reaction === 'liked' && !a.isArchived;
+      case 'disliked': return a.reaction === 'disliked' && !a.isArchived;
+      case 'unsure': return a.reaction === 'unsure' && !a.isArchived;
+      case 'archived': return a.isArchived;
+      case 'all': return !a.isArchived;
+      default: return !a.isArchived;
+    }
+  });
+
   const filteredEntries = entries.filter(entry => {
     const matchesSearch = entry.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           entry.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -183,10 +382,10 @@ const DashboardContent = () => {
   const calculateStreak = () => {
     if (entries.length === 0) return 0;
     let streak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
     for (let i = 0; i < 30; i++) {
-      const checkDate = new Date(today);
+      const checkDate = new Date(todayDate);
       checkDate.setDate(checkDate.getDate() - i);
       const dateStr = checkDate.toLocaleDateString();
       const hasEntry = entries.some(e => new Date(e.timestamp).toLocaleDateString() === dateStr);
@@ -206,7 +405,9 @@ const DashboardContent = () => {
     }).length,
     streak: calculateStreak(),
     completedTasks: tasks.filter(t => t.completed).length,
-    totalTasks: tasks.length
+    totalTasks: tasks.length,
+    affirmedToday: todaysAffirmations.filter(a => a.status === 'affirmed').length,
+    totalToday: todaysAffirmations.length
   };
 
   const moodStats = moods.map(m => ({
@@ -244,40 +445,135 @@ const DashboardContent = () => {
   };
 
   // ─────────────────────────────────────────────────────────────
-  // THEME-AWARE CLASS HELPERS
+  // THEME CLASSES
   // ─────────────────────────────────────────────────────────────
   const cx = {
-    // Backgrounds
     pageBg: 'bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/30',
     cardBg: 'bg-white/70 dark:bg-slate-800/50 backdrop-blur-xl',
     cardBgSolid: 'bg-white dark:bg-slate-800',
     glassBg: 'bg-white/60 dark:bg-slate-800/60 backdrop-blur-2xl',
-    
-    // Borders
     border: 'border border-slate-200/80 dark:border-slate-700/50',
     borderSubtle: 'border border-slate-100 dark:border-slate-700/30',
-    
-    // Text
     textPrimary: 'text-slate-900 dark:text-white',
     textSecondary: 'text-slate-600 dark:text-slate-300',
     textMuted: 'text-slate-500 dark:text-slate-400',
     textFaint: 'text-slate-400 dark:text-slate-500',
-    
-    // Interactive
     hoverBg: 'hover:bg-slate-100/80 dark:hover:bg-slate-700/50',
     activeBg: 'bg-slate-100 dark:bg-slate-700',
-    
-    // Shadows
     shadowSm: 'shadow-sm shadow-slate-200/50 dark:shadow-slate-900/50',
     shadowMd: 'shadow-md shadow-slate-200/50 dark:shadow-slate-900/50',
     shadowLg: 'shadow-lg shadow-slate-200/60 dark:shadow-slate-900/60',
     shadowXl: 'shadow-xl shadow-slate-300/50 dark:shadow-slate-900/70',
-    
-    // Accent
     accentGradient: 'bg-gradient-to-r from-indigo-500 to-purple-600',
     accentGradientSubtle: 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10',
     accentText: 'text-indigo-600 dark:text-indigo-400',
     accentBorder: 'border-indigo-500/30'
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // AFFIRMATION CARD COMPONENT
+  // ─────────────────────────────────────────────────────────────
+  const AffirmationCard = ({ affirmation, showDate = false, compact = false }) => {
+    const isAffirmed = affirmation.status === 'affirmed';
+    
+    return (
+      <div className={`${cx.cardBg} ${cx.border} ${cx.shadowSm} rounded-2xl p-4 transition-all duration-200 ${isAffirmed ? 'opacity-60' : ''}`}>
+        <div className="flex items-start gap-3">
+          {/* Affirm Button */}
+          <button
+            onClick={() => affirmAffirmation(affirmation.id)}
+            disabled={isAffirmed}
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all mt-0.5 ${
+              isAffirmed 
+                ? 'bg-indigo-500 border-indigo-500' 
+                : 'border-slate-300 dark:border-slate-600 hover:border-indigo-500'
+            }`}
+          >
+            {isAffirmed && <Check className="w-3.5 h-3.5 text-white" />}
+          </button>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm ${isAffirmed ? 'line-through' : ''} ${cx.textSecondary} leading-relaxed`}>
+              "{affirmation.text}"
+            </p>
+            
+            {showDate && (
+              <p className={`text-xs ${cx.textFaint} mt-1`}>
+                {new Date(affirmation.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Reaction Buttons */}
+            <button
+              onClick={() => setAffirmationReaction(affirmation.id, 'liked')}
+              className={`p-1.5 rounded-lg transition-all ${
+                affirmation.reaction === 'liked' 
+                  ? 'bg-green-500/20 text-green-600 dark:text-green-400' 
+                  : `${cx.hoverBg} ${cx.textMuted}`
+              }`}
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setAffirmationReaction(affirmation.id, 'disliked')}
+              className={`p-1.5 rounded-lg transition-all ${
+                affirmation.reaction === 'disliked' 
+                  ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400' 
+                  : `${cx.hoverBg} ${cx.textMuted}`
+              }`}
+            >
+              <ThumbsDown className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setAffirmationReaction(affirmation.id, 'unsure')}
+              className={`p-1.5 rounded-lg transition-all ${
+                affirmation.reaction === 'unsure' 
+                  ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' 
+                  : `${cx.hoverBg} ${cx.textMuted}`
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+            </button>
+            
+            {/* Divider */}
+            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+            
+            {/* Favorite */}
+            <button
+              onClick={() => toggleAffirmationFavorite(affirmation.id)}
+              className={`p-1.5 rounded-lg transition-all ${
+                affirmation.isFavorite 
+                  ? 'bg-amber-500/20 text-amber-500' 
+                  : `${cx.hoverBg} ${cx.textMuted}`
+              }`}
+            >
+              <Star className={`w-3.5 h-3.5 ${affirmation.isFavorite ? 'fill-current' : ''}`} />
+            </button>
+            
+            {/* Archive */}
+            {!affirmation.isArchived ? (
+              <button
+                onClick={() => archiveAffirmation(affirmation.id)}
+                className={`p-1.5 rounded-lg ${cx.hoverBg} ${cx.textMuted} transition-all`}
+              >
+                <Archive className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                onClick={() => unarchiveAffirmation(affirmation.id)}
+                className={`p-1.5 rounded-lg bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-all`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -290,7 +586,6 @@ const DashboardContent = () => {
       <header className={`sticky top-0 z-50 ${cx.glassBg} ${cx.border} border-t-0 border-x-0`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-2xl ${cx.accentGradient} shadow-lg shadow-indigo-500/25`}>
                 <Brain className="w-5 h-5 text-white" />
@@ -301,7 +596,6 @@ const DashboardContent = () => {
               </div>
             </div>
 
-            {/* Nav Tabs */}
             <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80">
               {tabs.map(tab => {
                 const Icon = tab.icon;
@@ -323,12 +617,8 @@ const DashboardContent = () => {
               })}
             </nav>
 
-            {/* Actions */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={toggle}
-                className={`p-2 rounded-xl ${cx.hoverBg} ${cx.textMuted} transition-all`}
-              >
+              <button onClick={toggle} className={`p-2 rounded-xl ${cx.hoverBg} ${cx.textMuted} transition-all`}>
                 {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               <button
@@ -352,10 +642,10 @@ const DashboardContent = () => {
             {/* Stats Row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Total Entries', value: stats.totalEntries, icon: BookOpen, color: 'indigo' },
+                { label: 'Entries', value: stats.totalEntries, icon: BookOpen, color: 'indigo' },
                 { label: 'This Week', value: stats.thisWeek, icon: Calendar, color: 'emerald' },
-                { label: 'Day Streak', value: stats.streak, icon: Flame, color: 'amber', suffix: 'days' },
-                { label: 'Tasks Done', value: `${stats.completedTasks}/${stats.totalTasks}`, icon: CheckCircle, color: 'green' }
+                { label: 'Streak', value: stats.streak, icon: Flame, color: 'amber', suffix: 'days' },
+                { label: 'Affirmed', value: `${stats.affirmedToday}/${stats.totalToday}`, icon: Quote, color: 'purple' }
               ].map((stat, i) => (
                 <div key={i} className={`${cx.cardBg} ${cx.border} ${cx.shadowSm} rounded-2xl p-4 hover:scale-[1.02] transition-transform duration-200`}>
                   <div className="flex items-center justify-between mb-2">
@@ -372,44 +662,41 @@ const DashboardContent = () => {
 
             {/* Main Grid */}
             <div className="grid lg:grid-cols-3 gap-6">
-              {/* Recent Entries */}
+              
+              {/* Today's Affirmations */}
               <div className="lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className={`text-sm font-semibold uppercase tracking-wider ${cx.textMuted}`}>Recent Entries</h2>
-                  <button onClick={() => setActiveTab('journal')} className={`text-xs ${cx.accentText} font-medium flex items-center gap-1 hover:gap-2 transition-all`}>
-                    View All <ArrowRight className="w-3 h-3" />
-                  </button>
+                  <h2 className={`text-sm font-semibold uppercase tracking-wider ${cx.textMuted} flex items-center gap-2`}>
+                    <Quote className="w-4 h-4" /> Today's Affirmations
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={regenerateAffirmations}
+                      className={`text-xs ${cx.accentText} font-medium flex items-center gap-1 ${cx.hoverBg} px-2 py-1 rounded-lg transition-all`}
+                    >
+                      <RefreshCw className="w-3 h-3" /> Regenerate
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('affirmations')} 
+                      className={`text-xs ${cx.accentText} font-medium flex items-center gap-1 hover:gap-2 transition-all`}
+                    >
+                      View All <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {entries.slice(0, 4).map(entry => {
-                    const MoodIcon = getMoodIcon(entry.mood);
-                    const catStyle = getCategoryStyle(entry.category);
-                    return (
-                      <div key={entry.id} className={`${cx.cardBg} ${cx.border} ${cx.shadowSm} rounded-2xl p-4 hover:scale-[1.01] transition-all duration-200 group`}>
-                        <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded-xl ${catStyle.bg} ${catStyle.border} border`}>
-                            <MoodIcon className={`w-4 h-4 ${getMoodColor(entry.mood)}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${catStyle.bg} ${catStyle.text}`}>
-                                {entry.category}
-                              </span>
-                              <span className={`text-xs ${cx.textFaint}`}>{entry.date} · {entry.time}</span>
-                            </div>
-                            <p className={`text-sm ${cx.textSecondary} line-clamp-2`}>{entry.content}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {entries.length === 0 && (
-                    <div className={`${cx.cardBg} ${cx.border} rounded-2xl p-8 text-center`}>
-                      <BookOpen className={`w-10 h-10 mx-auto mb-3 ${cx.textFaint}`} />
-                      <p className={cx.textMuted}>No entries yet. Start journaling!</p>
-                    </div>
-                  )}
-                </div>
+                
+                {overviewAffirmations.length > 0 ? (
+                  <div className="space-y-3">
+                    {overviewAffirmations.map(aff => (
+                      <AffirmationCard key={aff.id} affirmation={aff} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className={`${cx.cardBg} ${cx.border} rounded-2xl p-8 text-center`}>
+                    <Quote className={`w-10 h-10 mx-auto mb-3 ${cx.textFaint}`} />
+                    <p className={cx.textMuted}>Add journal entries to generate personalized affirmations</p>
+                  </div>
+                )}
               </div>
 
               {/* Sidebar */}
@@ -464,21 +751,75 @@ const DashboardContent = () => {
           </div>
         )}
 
+        {/* ════════════════ AFFIRMATIONS TAB ════════════════ */}
+        {activeTab === 'affirmations' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className={`${cx.cardBg} ${cx.border} ${cx.shadowSm} rounded-2xl p-4`}>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold">Affirmations</h2>
+                  <p className={`text-sm ${cx.textMuted}`}>Personalized based on your journal history</p>
+                </div>
+                <button 
+                  onClick={regenerateAffirmations}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl ${cx.accentGradient} text-white text-sm font-medium shadow-lg shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all`}
+                >
+                  <RefreshCw className="w-4 h-4" /> Generate New
+                </button>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap gap-2">
+              {affirmationFilters.map(filter => (
+                <button
+                  key={filter.value}
+                  onClick={() => setAffirmationFilter(filter.value)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                    affirmationFilter === filter.value
+                      ? `${cx.accentGradient} text-white shadow-md`
+                      : `${cx.cardBg} ${cx.border} ${cx.textMuted} hover:${cx.textPrimary}`
+                  }`}
+                >
+                  {filter.label}
+                  {filter.value === 'favorites' && favoriteAffirmations.length > 0 && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded-full bg-white/20 text-xs">
+                      {favoriteAffirmations.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Affirmations List */}
+            <div className="space-y-3">
+              {filteredAffirmations.length > 0 ? (
+                filteredAffirmations.map(aff => (
+                  <AffirmationCard key={aff.id} affirmation={aff} showDate={affirmationFilter !== 'today'} />
+                ))
+              ) : (
+                <div className={`${cx.cardBg} ${cx.border} rounded-2xl p-12 text-center`}>
+                  <Quote className={`w-10 h-10 mx-auto mb-3 ${cx.textFaint}`} />
+                  <p className={cx.textMuted}>
+                    {affirmationFilter === 'today' 
+                      ? 'No affirmations for today. Add journal entries to generate some!' 
+                      : `No ${affirmationFilter} affirmations yet.`}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ════════════════ JOURNAL TAB ════════════════ */}
         {activeTab === 'journal' && (
           <div className="space-y-6">
-            {/* Filters */}
             <div className={`${cx.cardBg} ${cx.border} ${cx.shadowSm} rounded-2xl p-4`}>
               <div className="flex flex-wrap gap-3">
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${cx.textMuted}`} />
-                  <input
-                    type="text"
-                    placeholder="Search entries..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-2 rounded-xl ${cx.cardBgSolid} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all`}
-                  />
+                  <input type="text" placeholder="Search entries..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full pl-10 pr-4 py-2 rounded-xl ${cx.cardBgSolid} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all`} />
                 </div>
                 <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className={`px-4 py-2 rounded-xl ${cx.cardBgSolid} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50`}>
                   <option value="all">All Categories</option>
@@ -490,8 +831,6 @@ const DashboardContent = () => {
                 </select>
               </div>
             </div>
-
-            {/* Entries */}
             <div className="space-y-3">
               {filteredEntries.map(entry => {
                 const MoodIcon = getMoodIcon(entry.mood);
@@ -505,17 +844,13 @@ const DashboardContent = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${catStyle.bg} ${catStyle.text} border ${catStyle.border}`}>
-                            {entry.category}
-                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${catStyle.bg} ${catStyle.text} border ${catStyle.border}`}>{entry.category}</span>
                           <span className={`text-xs ${cx.textFaint}`}>{entry.date} · {entry.time}</span>
                         </div>
                         <p className={`text-sm ${cx.textSecondary} whitespace-pre-wrap ${!isExpanded && 'line-clamp-3'}`}>{entry.content}</p>
                         {entry.tags?.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-3">
-                            {entry.tags.map(tag => (
-                              <span key={tag} className={`px-2 py-0.5 rounded-full text-xs ${cx.cardBgSolid} ${cx.border} ${cx.textMuted}`}>#{tag}</span>
-                            ))}
+                            {entry.tags.map(tag => (<span key={tag} className={`px-2 py-0.5 rounded-full text-xs ${cx.cardBgSolid} ${cx.border} ${cx.textMuted}`}>#{tag}</span>))}
                           </div>
                         )}
                       </div>
@@ -638,14 +973,7 @@ const DashboardContent = () => {
               </button>
             </div>
             <div className="space-y-4">
-              <textarea
-                autoFocus
-                placeholder="What's on your mind?"
-                value={newEntry.content}
-                onChange={(e) => setNewEntry(prev => ({ ...prev, content: e.target.value }))}
-                rows={5}
-                className={`w-full p-4 rounded-2xl ${cx.cardBg} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none transition-all`}
-              />
+              <textarea autoFocus placeholder="What's on your mind?" value={newEntry.content} onChange={(e) => setNewEntry(prev => ({ ...prev, content: e.target.value }))} rows={5} className={`w-full p-4 rounded-2xl ${cx.cardBg} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none transition-all`} />
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={`text-xs font-medium ${cx.textMuted} mb-1.5 block`}>Category</label>
@@ -662,19 +990,9 @@ const DashboardContent = () => {
               </div>
               <div>
                 <label className={`text-xs font-medium ${cx.textMuted} mb-1.5 block`}>Tags</label>
-                <input
-                  type="text"
-                  placeholder="work, idea, personal (comma separated)"
-                  value={newEntry.tags}
-                  onChange={(e) => setNewEntry(prev => ({ ...prev, tags: e.target.value }))}
-                  className={`w-full px-4 py-2.5 rounded-xl ${cx.cardBg} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50`}
-                />
+                <input type="text" placeholder="work, idea, personal (comma separated)" value={newEntry.tags} onChange={(e) => setNewEntry(prev => ({ ...prev, tags: e.target.value }))} className={`w-full px-4 py-2.5 rounded-xl ${cx.cardBg} ${cx.border} text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50`} />
               </div>
-              <button
-                onClick={handleAddEntry}
-                disabled={!newEntry.content.trim()}
-                className={`w-full py-3 rounded-xl ${cx.accentGradient} text-white font-medium shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99] transition-all duration-200`}
-              >
+              <button onClick={handleAddEntry} disabled={!newEntry.content.trim()} className={`w-full py-3 rounded-xl ${cx.accentGradient} text-white font-medium shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99] transition-all duration-200`}>
                 Save Entry
               </button>
             </div>
@@ -686,4 +1004,3 @@ const DashboardContent = () => {
 };
 
 export default Dashboard;
-

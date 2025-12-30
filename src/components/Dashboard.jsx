@@ -4,7 +4,7 @@ import { db } from '../services/firebase';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { encrypt, decrypt } from '../services/encryption';
 
-const Dashboard = () => {
+const Dashboard = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [entries, setEntries] = useState([]);
   const [newEntry, setNewEntry] = useState('');
@@ -339,13 +339,23 @@ const Dashboard = () => {
       <div className="max-w-6xl mx-auto">
         
         <div className="mb-8">
-          <h1 className="text-3xl font-light mb-2 flex items-center gap-3">
-            <Brain className="w-8 h-8 text-cyan-400" />
-            Life Journal & Command Center
-          </h1>
-          <p className="text-slate-400 text-sm">
-            Last compiled: {new Date(compiledProfile.lastCompiled).toLocaleString()}
-          </p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-light mb-2 flex items-center gap-3">
+                <Brain className="w-8 h-8 text-cyan-400" />
+                Life Journal & Command Center
+              </h1>
+              <p className="text-slate-400 text-sm">
+                Last compiled: {new Date(compiledProfile.lastCompiled).toLocaleString()}
+              </p>
+            </div>
+            <button
+              onClick={onLogout}
+              className="text-slate-400 hover:text-slate-300 text-sm transition"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">

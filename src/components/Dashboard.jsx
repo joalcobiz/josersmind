@@ -3,6 +3,7 @@ import { Calendar, Brain, Target, Sparkles, Video, Plus, TrendingUp, AlertCircle
 import { db } from '../services/firebase';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { encrypt, decrypt } from '../services/encryption';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const Dashboard = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -211,23 +212,40 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
-  const handleSummarizeDecision = async (shouldSummarize) => {
-    if (shouldSummarize) {
-      const mockQuestions = [
-        { id: 1, question: "You mentioned avoiding TikTok - when did this start?", answered: false, answer: null },
-        { id: 2, question: "What specific event from 2019 are you referring to?", answered: false, answer: null }
-      ];
+ const handleSummarizeDecision = async (shouldSummarize) => {
+  if (shouldSummarize) {
+    try {
+      // Call Cloud Function for AI recompilation
+      const functions = getFunctions();
+      const recompileEntry = httpsCallable(functions, 'recompileEntry');
       
-      try {
-        await updateDoc(doc(db, 'entries', currentEntryForSummary.id), {
-          summarized: true,
-          summary: encrypt("AI summary pending full integration"),
-          clarifications: mockQuestions
-        });
-      } catch (error) {
-        console.error('Error updating entry:', error);
-      }
+      setLoading(true);
+      
+      const result = await recompileEntry({
+        entryContent: currentEntryForSummary.content,
+        entryId: currentEntryForSummary.id
+      });
+      
+      console.log('AI recompilation result:', result.data);
+      
+      await loadEntries();
+      setLoading(false);
+    } catch (error) {
+      console.error('Error calling recompile function:', error);
+      alert('Failed to generate AI summary. Check console for details.');
+      setLoading(false);
     }
+  } else {
+    await loadEntries();
+  }
+  
+  setShowSummarizePrompt(false);
+  setCurrentEntryForSummary(null);
+  setNewEntry('');
+  setEntryCategory('');
+  setEntryMood('');
+  setShowEntryForm(false);
+};
     
     await loadEntries();
     setShowSummarizePrompt(false);

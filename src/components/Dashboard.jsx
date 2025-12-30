@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { Calendar, Brain, Target, Sparkles, Video, Plus, TrendingUp, AlertCircle, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Brain, Target, Sparkles, Video, Plus, TrendingUp, AlertCircle, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { db } from '../services/firebase';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { encrypt, decrypt } from '../services/encryption';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -15,6 +18,7 @@ const Dashboard = () => {
   const [expandedEntries, setExpandedEntries] = useState({});
   const [answeringQuestion, setAnsweringQuestion] = useState(null);
   const [questionAnswer, setQuestionAnswer] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const compiledProfile = {
     lastCompiled: new Date().toISOString(),
@@ -140,39 +144,92 @@ const Dashboard = () => {
 
   const categories = ['Business', 'Family', 'Medical', 'Creative', 'TikTok', 'Mental Health', 'Daily Life'];
   const moods = ['😊 Good', '😐 Neutral', '😟 Anxious', '😢 Down', '😤 Frustrated', '🤔 Thoughtful'];
-  const addEntry = () => {
-    if (!newEntry.trim()) return;
-    const entry = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-      content: newEntry,
-      category: entryCategory || 'Uncategorized',
-      mood: entryMood || null,
-      summarized: false,
-      summary: null,
-      clarifications: [],
-      dismissedQuestions: []
-    };
-    setCurrentEntryForSummary(entry);
-    setShowSummarizePrompt(true);
+
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
+  const loadEntries = async () => {
+    try {
+      setLoading(true);
+      const q = query(collection(db, 'entries'), orderBy('timestamp', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const loadedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          timestamp: data.timestamp,
+          content: decrypt(data.content),
+          category: data.category,
+          mood: data.mood,
+          summarized: data.summarized || false,
+          summary: data.summary || null,
+          clarifications: data.clarifications || [],
+          dismissedQuestions: data.dismissedQuestions || []
+        };
+      });
+      
+      setEntries(loadedEntries);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading entries:', error);
+      setLoading(false);
+    }
   };
 
-  const handleSummarizeDecision = (shouldSummarize) => {
+  const addEntry = async () => {
+    if (!newEntry.trim()) return;
+    
+    try {
+      const docRef = await addDoc(collection(db, 'entries'), {
+        timestamp: new Date().toISOString(),
+        content: encrypt(newEntry),
+        category: entryCategory || 'Uncategorized',
+        mood: entryMood || null,
+        summarized: false,
+        summary: null,
+        clarifications: [],
+        dismissedQuestions: []
+      });
+      
+      setCurrentEntryForSummary({
+        id: docRef.id,
+        timestamp: new Date().toISOString(),
+        content: newEntry,
+        category: entryCategory || 'Uncategorized',
+        mood: entryMood || null,
+        summarized: false,
+        summary: null,
+        clarifications: [],
+        dismissedQuestions: []
+      });
+      setShowSummarizePrompt(true);
+    } catch (error) {
+      console.error('Error saving entry:', error);
+      alert('Failed to save entry');
+    }
+  };
+
+  const handleSummarizeDecision = async (shouldSummarize) => {
     if (shouldSummarize) {
       const mockQuestions = [
         { id: 1, question: "You mentioned avoiding TikTok - when did this start?", answered: false, answer: null },
         { id: 2, question: "What specific event from 2019 are you referring to?", answered: false, answer: null }
       ];
-      const updatedEntry = { 
-        ...currentEntryForSummary, 
-        summarized: true, 
-        summary: "AI summary will appear here after full API integration", 
-        clarifications: mockQuestions 
-      };
-      setEntries([updatedEntry, ...entries]);
-    } else {
-      setEntries([currentEntryForSummary, ...entries]);
+      
+      try {
+        await updateDoc(doc(db, 'entries', currentEntryForSummary.id), {
+          summarized: true,
+          summary: encrypt("AI summary pending full integration"),
+          clarifications: mockQuestions
+        });
+      } catch (error) {
+        console.error('Error updating entry:', error);
+      }
     }
+    
+    await loadEntries();
     setShowSummarizePrompt(false);
     setCurrentEntryForSummary(null);
     setNewEntry('');
@@ -181,43 +238,53 @@ const Dashboard = () => {
     setShowEntryForm(false);
   };
 
-  const answerClarification = (entryId, questionId) => {
-    if (!questionAnswer.trim()) return;
-    setEntries(entries.map(entry => {
-      if (entry.id === entryId) {
-        return {
-          ...entry,
-          clarifications: entry.clarifications.map(q => 
-            q.id === questionId ? { ...q, answered: true, answer: questionAnswer } : q
-          )
-        };
-      }
-      return entry;
-    }));
-    setAnsweringQuestion(null);
-    setQuestionAnswer('');
+  const answerClarification = async (entryId, questionId) => {
+    if (!questionAnswer.trim()) {
+      alert('Please enter an answer');
+      return;
+    }
+    
+    try {
+      const entry = entries.find(e => e.id === entryId);
+      const updatedClarifications = entry.clarifications.map(q => 
+        q.id === questionId ? { ...q, answered: true, answer: questionAnswer } : q
+      );
+      
+      await updateDoc(doc(db, 'entries', entryId), {
+        clarifications: updatedClarifications
+      });
+      
+      await loadEntries();
+      setAnsweringQuestion(null);
+      setQuestionAnswer('');
+    } catch (error) {
+      console.error('Error answering:', error);
+    }
   };
 
-  const dismissQuestion = (entryId, questionId) => {
-    setEntries(entries.map(entry => {
-      if (entry.id === entryId) {
-        const q = entry.clarifications.find(x => x.id === questionId);
-        return {
-          ...entry,
-          clarifications: entry.clarifications.filter(x => x.id !== questionId),
-          dismissedQuestions: [...(entry.dismissedQuestions || []), q]
-        };
-      }
-      return entry;
-    }));
+  const dismissQuestion = async (entryId, questionId) => {
+    try {
+      const entry = entries.find(e => e.id === entryId);
+      const q = entry.clarifications.find(x => x.id === questionId);
+      const updatedClarifications = entry.clarifications.filter(x => x.id !== questionId);
+      const updatedDismissed = [...(entry.dismissedQuestions || []), q];
+      
+      await updateDoc(doc(db, 'entries', entryId), {
+        clarifications: updatedClarifications,
+        dismissedQuestions: updatedDismissed
+      });
+      
+      await loadEntries();
+    } catch (error) {
+      console.error('Error dismissing:', error);
+    }
   };
 
   const getFilteredEntries = () => {
     let filtered = [...entries];
     if (searchQuery) {
       filtered = filtered.filter(e => 
-        e.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (e.summary && e.summary.toLowerCase().includes(searchQuery.toLowerCase()))
+        e.content.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     if (filterDate !== 'all') {
@@ -231,9 +298,13 @@ const Dashboard = () => {
     return filtered;
   };
 
-  const deleteEntry = (id) => {
-    if (window.confirm('Delete this entry? This cannot be undone.')) {
-      setEntries(entries.filter(e => e.id !== id));
+  const deleteEntry = async (id) => {
+    if (!window.confirm('Delete this entry?')) return;
+    try {
+      await deleteDoc(doc(db, 'entries', id));
+      await loadEntries();
+    } catch (error) {
+      console.error('Error deleting:', error);
     }
   };
 
@@ -242,10 +313,7 @@ const Dashboard = () => {
   };
 
   const getUnsummarizedCount = () => entries.filter(e => !e.summarized).length;
-  
-  const getPendingClarificationsCount = () => {
-    return entries.reduce((c, e) => c + (e.clarifications?.filter(q => !q.answered).length || 0), 0);
-  };
+  const getPendingClarificationsCount = () => entries.reduce((c, e) => c + (e.clarifications?.filter(q => !q.answered).length || 0), 0);
 
   const exportEntries = () => {
     const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
@@ -255,6 +323,17 @@ const Dashboard = () => {
     link.download = `journal-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <Brain className="w-12 h-12 text-cyan-400 animate-pulse mx-auto mb-4" />
+          <p className="text-slate-400">Loading your journal...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 p-6">
       <div className="max-w-6xl mx-auto">
@@ -267,23 +346,6 @@ const Dashboard = () => {
           <p className="text-slate-400 text-sm">
             Last compiled: {new Date(compiledProfile.lastCompiled).toLocaleString()}
           </p>
-          
-          {(getUnsummarizedCount() > 0 || getPendingClarificationsCount() > 0) && (
-            <div className="mt-4 flex gap-3 flex-wrap">
-              {getUnsummarizedCount() > 0 && (
-                <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg px-4 py-2 text-sm text-amber-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {getUnsummarizedCount()} unsummarized entries
-                </div>
-              )}
-              {getPendingClarificationsCount() > 0 && (
-                <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg px-4 py-2 text-sm text-blue-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {getPendingClarificationsCount()} clarifications needed
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
@@ -291,11 +353,16 @@ const Dashboard = () => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap relative ${
                 activeTab === tab ? 'bg-cyan-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'journal' && (getUnsummarizedCount() > 0 || getPendingClarificationsCount() > 0) && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {getUnsummarizedCount() + getPendingClarificationsCount()}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -453,6 +520,27 @@ const Dashboard = () => {
 
         {activeTab === 'journal' && (
           <div className="space-y-6">
+            
+            {(getUnsummarizedCount() > 0 || getPendingClarificationsCount() > 0) && (
+              <div className="bg-slate-800/50 backdrop-blur rounded-lg p-4 border border-slate-700">
+                <h3 className="text-sm font-medium text-slate-300 mb-3">Action Required</h3>
+                <div className="space-y-2">
+                  {getUnsummarizedCount() > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-amber-300">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>{getUnsummarizedCount()} unsummarized entries - view in History tab</span>
+                    </div>
+                  )}
+                  {getPendingClarificationsCount() > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-blue-300">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>{getPendingClarificationsCount()} clarification questions pending - view in History tab</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6 border border-slate-700">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-light flex items-center gap-2">
@@ -500,7 +588,7 @@ const Dashboard = () => {
                   <textarea
                     value={newEntry}
                     onChange={(e) => setNewEntry(e.target.value)}
-                    placeholder="Write anything... thoughts, feelings, events, observations. This is your private space."
+                    placeholder="Write anything... thoughts, feelings, events, observations."
                     className="w-full bg-slate-900 text-slate-200 rounded p-3 border border-slate-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none min-h-32 text-sm"
                   />
                   <div className="flex gap-2">
@@ -531,7 +619,7 @@ const Dashboard = () => {
                 <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
                   <h3 className="text-lg font-medium mb-4">Summarize this entry?</h3>
                   <p className="text-slate-300 text-sm mb-6">
-                    AI will generate a summary and ask clarifying questions to build a chronological timeline.
+                    AI will generate a summary and ask clarifying questions.
                   </p>
                   <div className="flex gap-3">
                     <button
@@ -552,8 +640,7 @@ const Dashboard = () => {
             )}
           </div>
         )}
-
-        {activeTab === 'history' && (
+{activeTab === 'history' && (
           <div className="space-y-6">
             <div className="bg-slate-800/50 backdrop-blur rounded-lg p-6 border border-slate-700">
               <div className="flex justify-between items-center mb-6">
@@ -564,7 +651,7 @@ const Dashboard = () => {
                 <button
                   onClick={exportEntries}
                   disabled={entries.length === 0}
-                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded text-sm transition disabled:opacity-50"
                 >
                   Export All
                 </button>
@@ -577,7 +664,7 @@ const Dashboard = () => {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by keyword..."
+                    placeholder="Search..."
                     className="w-full bg-slate-900 text-slate-200 rounded p-3 border border-slate-600 focus:border-cyan-500 outline-none text-sm"
                   />
                 </div>
@@ -599,7 +686,7 @@ const Dashboard = () => {
               <div className="space-y-3">
                 {getFilteredEntries().length === 0 ? (
                   <p className="text-slate-500 text-center py-8 text-sm">
-                    {entries.length === 0 ? 'No entries yet. Add your first entry in the Journal tab.' : 'No entries match your search/filter criteria.'}
+                    {entries.length === 0 ? 'No entries yet.' : 'No matches.'}
                   </p>
                 ) : (
                   getFilteredEntries().map(entry => (
@@ -637,7 +724,7 @@ const Dashboard = () => {
                       {entry.summarized && entry.summary && (
                         <div className="mb-3 p-3 bg-cyan-500/10 border border-cyan-500/30 rounded">
                           <p className="text-xs text-cyan-300 mb-1 font-medium">AI Summary:</p>
-                          <p className="text-slate-300 text-sm">{entry.summary}</p>
+                          <p className="text-slate-300 text-sm">{decrypt(entry.summary)}</p>
                         </div>
                       )}
 
@@ -771,4 +858,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Dashboard;         
